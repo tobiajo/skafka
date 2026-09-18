@@ -5,8 +5,12 @@ sealed trait GroupProtocol extends Product {
 }
 
 object GroupProtocol {
-  val Values: Set[GroupProtocol] = Set(Classic, Consumer)
+  val Values: Set[GroupProtocol] = Set(Classic, Consumer())
 
   case object Classic extends GroupProtocol { def name: String = "classic" }
-  case object Consumer extends GroupProtocol { def name: String = "consumer" }
+
+  /** @param remoteAssignor `group.remote.assignor`, the broker default when `None` */
+  final case class Consumer(remoteAssignor: Option[String] = None) extends GroupProtocol {
+    def name: String = "consumer"
+  }
 }

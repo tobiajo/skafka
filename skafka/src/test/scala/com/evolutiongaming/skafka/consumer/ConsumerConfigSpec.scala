@@ -39,8 +39,7 @@ class ConsumerConfigSpec extends AnyFunSuite with Matchers {
     interceptorClasses          = List("interceptorClasses"),
     excludeInternalTopics       = false,
     isolationLevel              = IsolationLevel.ReadCommitted,
-    groupProtocol               = GroupProtocol.Consumer,
-    groupRemoteAssignor         = Some("uniform"),
+    groupProtocol               = GroupProtocol.Consumer(Some("uniform")),
     clientRack                  = Some("clientRack"),
     saslSupport                 = SaslSupportConfig(
       kerberosServiceName             = Some("service_name"),
@@ -178,7 +177,7 @@ class ConsumerConfigSpec extends AnyFunSuite with Matchers {
 
   // Classic-protocol bindings (assignment/session/heartbeat present, no assignor) are covered by the "bindings" test above.
   test("bindings with consumer group protocol") {
-    val bindings = ConsumerConfig(groupProtocol = GroupProtocol.Consumer).bindings
+    val bindings = ConsumerConfig(groupProtocol = GroupProtocol.Consumer()).bindings
     bindings.get("group.protocol") shouldEqual Some("consumer")
     bindings.get("partition.assignment.strategy") shouldEqual None
     bindings.get("session.timeout.ms") shouldEqual None
@@ -187,8 +186,7 @@ class ConsumerConfigSpec extends AnyFunSuite with Matchers {
   }
 
   test("bindings with consumer group protocol and remote assignor") {
-    val bindings =
-      ConsumerConfig(groupProtocol = GroupProtocol.Consumer, groupRemoteAssignor = Some("uniform")).bindings
+    val bindings = ConsumerConfig(groupProtocol = GroupProtocol.Consumer(Some("uniform"))).bindings
     bindings.get("group.remote.assignor") shouldEqual Some("uniform")
   }
 
@@ -208,35 +206,20 @@ class ConsumerConfigSpec extends AnyFunSuite with Matchers {
     new KafkaConsumerConfig(kafkaProperties(configs))
   }
 
-  // kafka-clients rejects group.remote.assignor under classic, so passing validation proves skafka suppressed it.
-  test("kafka-clients ConsumerConfig accepts classic bindings: groupRemoteAssignor suppressed") {
-    noException should be thrownBy kafkaClientConfig(
-      ConsumerConfig(
-        groupId             = Some("group"),
-        groupProtocol       = GroupProtocol.Classic,
-        groupRemoteAssignor = Some("uniform"),
-      )
-    )
-  }
-
   // The assignor value is not validated at construction time, so this also covers the consumer protocol without one.
-  test("kafka-clients ConsumerConfig accepts consumer bindings with groupRemoteAssignor set") {
+  test("kafka-clients ConsumerConfig accepts consumer bindings with a remote assignor") {
     noException should be thrownBy kafkaClientConfig(
-      ConsumerConfig(
-        groupId             = Some("group"),
-        groupProtocol       = GroupProtocol.Consumer,
-        groupRemoteAssignor = Some("uniform"),
-      )
+      ConsumerConfig(groupId = Some("group"), groupProtocol = GroupProtocol.Consumer(Some("uniform")))
     )
   }
 
-  // Pins the kafka-clients rejection that the tests above rely on to prove suppression.
+  // Pins the kafka-clients rejection that the test above relies on to prove suppression.
   test("kafka-clients ConsumerConfig rejects protocol-mismatched configs") {
     val assignor   = "org.apache.kafka.clients.consumer.RangeAssignor"
-    val suppressed = List(
-      (GroupProtocol.Consumer, KafkaConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG, assignor),
-      (GroupProtocol.Consumer, KafkaConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, "10000"),
-      (GroupProtocol.Consumer, KafkaConsumerConfig.HEARTBEAT_INTERVAL_MS_CONFIG, "3000"),
+    val suppressed = List[(GroupProtocol, String, String)](
+      (GroupProtocol.Consumer(), KafkaConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG, assignor),
+      (GroupProtocol.Consumer(), KafkaConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, "10000"),
+      (GroupProtocol.Consumer(), KafkaConsumerConfig.HEARTBEAT_INTERVAL_MS_CONFIG, "3000"),
       (GroupProtocol.Classic, KafkaConsumerConfig.GROUP_REMOTE_ASSIGNOR_CONFIG, "uniform"),
     )
 

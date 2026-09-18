@@ -86,9 +86,9 @@ lazy val skafka = project
   .settings(commonSettings)
   .settings(
     name := "skafka",
-    // ConsumerConfig gained groupProtocol/groupRemoteAssignor fields (KIP-848), which breaks
+    // ConsumerConfig gained a groupProtocol field (KIP-848), which breaks
     // binary compatibility of its apply/copy/unapply/constructor: the next release must be a major.
-    // On Scala 2.13 the field count also crosses the 22-field cap on synthesized unapply (22 -> 24),
+    // On Scala 2.13 the field count also crosses the 22-field cap on synthesized unapply (22 -> 23),
     // so tuple-style pattern matching against ConsumerConfig no longer compiles there at all.
     // TODO reset to Compatibility.BinaryCompatible (the ThisBuild default) after that release
     versionPolicyIntention := Compatibility.None,

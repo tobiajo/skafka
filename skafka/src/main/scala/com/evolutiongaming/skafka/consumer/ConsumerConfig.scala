@@ -9,6 +9,9 @@ import org.apache.kafka.clients.consumer.ConsumerConfig as C
 import scala.concurrent.duration.{FiniteDuration, *}
 
 /** Check [[https://kafka.apache.org/documentation/#newconsumerconfigs]]
+  *
+  * `sessionTimeout`, `heartbeatInterval` and `partitionAssignmentStrategy` are ignored under
+  * [[GroupProtocol.Consumer]], see `bindings`.
   */
 final case class ConsumerConfig(
   common: CommonConfig                       = CommonConfig.Default,
@@ -21,21 +24,20 @@ final case class ConsumerConfig(
   autoCommitInterval: Option[FiniteDuration] = None,
   partitionAssignmentStrategy: String        =
     "org.apache.kafka.clients.consumer.RangeAssignor,org.apache.kafka.clients.consumer.CooperativeStickyAssignor",
-  autoOffsetReset: AutoOffsetReset    = AutoOffsetReset.Latest,
-  defaultApiTimeout: FiniteDuration   = 1.minute,
-  fetchMinBytes: Int                  = 1,
-  fetchMaxBytes: Int                  = 52428800,
-  fetchMaxWait: FiniteDuration        = 500.millis,
-  maxPartitionFetchBytes: Int         = 1048576,
-  checkCrcs: Boolean                  = true,
-  interceptorClasses: List[String]    = Nil,
-  excludeInternalTopics: Boolean      = true,
-  isolationLevel: IsolationLevel      = IsolationLevel.ReadUncommitted,
-  saslSupport: SaslSupportConfig      = SaslSupportConfig.Default,
-  sslSupport: SslSupportConfig        = SslSupportConfig.Default,
-  clientRack: Option[String]          = None,
-  groupProtocol: GroupProtocol        = GroupProtocol.Classic,
-  groupRemoteAssignor: Option[String] = None, // only emitted under GroupProtocol.Consumer
+  autoOffsetReset: AutoOffsetReset  = AutoOffsetReset.Latest,
+  defaultApiTimeout: FiniteDuration = 1.minute,
+  fetchMinBytes: Int                = 1,
+  fetchMaxBytes: Int                = 52428800,
+  fetchMaxWait: FiniteDuration      = 500.millis,
+  maxPartitionFetchBytes: Int       = 1048576,
+  checkCrcs: Boolean                = true,
+  interceptorClasses: List[String]  = Nil,
+  excludeInternalTopics: Boolean    = true,
+  isolationLevel: IsolationLevel    = IsolationLevel.ReadUncommitted,
+  saslSupport: SaslSupportConfig    = SaslSupportConfig.Default,
+  sslSupport: SslSupportConfig      = SslSupportConfig.Default,
+  clientRack: Option[String]        = None,
+  groupProtocol: GroupProtocol      = GroupProtocol.Classic,
 ) {
 
   def bindings: Map[String, String] = {
@@ -55,10 +57,8 @@ final case class ConsumerConfig(
           (C.SESSION_TIMEOUT_MS_CONFIG, sessionTimeout.toMillis.toString),
           (C.HEARTBEAT_INTERVAL_MS_CONFIG, heartbeatInterval.toMillis.toString),
         )
-      case GroupProtocol.Consumer =>
-        groupRemoteAssignor.fold(Map.empty[String, String]) { assignor =>
-          Map((C.GROUP_REMOTE_ASSIGNOR_CONFIG, assignor))
-        }
+      case GroupProtocol.Consumer(remoteAssignor) =>
+        remoteAssignor.fold(Map.empty[String, String]) { assignor => Map((C.GROUP_REMOTE_ASSIGNOR_CONFIG, assignor)) }
     }
     val bindings =
       groupIdMap ++ autoCommitIntervalMap ++ protocolSpecificMap ++
@@ -99,6 +99,7 @@ object ConsumerConfig {
   private implicit val IsolationLevelFromConf: FromConf[IsolationLevel] =
     ConfigHelpers.enumFromConf(IsolationLevel.Values, "IsolationLevel")(_.name)
 
+  // Matches the protocol name only; `Consumer.remoteAssignor` is read from its own key in `apply`.
   private implicit val GroupProtocolFromConf: FromConf[GroupProtocol] =
     ConfigHelpers.enumFromConf(GroupProtocol.Values, "GroupProtocol")(_.name)
 
@@ -148,13 +149,15 @@ object ConsumerConfig {
         get[List[String]]("interceptor-classes", "interceptor.classes") getOrElse default.interceptorClasses,
       excludeInternalTopics =
         get[Boolean]("exclude-internal-topics", "exclude.internal.topics") getOrElse default.excludeInternalTopics,
-      isolationLevel      = get[IsolationLevel]("isolation-level", "isolation.level") getOrElse default.isolationLevel,
-      saslSupport         = SaslSupportConfig(config, default.saslSupport),
-      sslSupport          = SslSupportConfig(config),
-      clientRack          = get[String]("client-rack", "client.rack") orElse default.clientRack,
-      groupProtocol       = get[GroupProtocol]("group-protocol", "group.protocol") getOrElse default.groupProtocol,
-      groupRemoteAssignor =
-        get[String]("group-remote-assignor", "group.remote.assignor") orElse default.groupRemoteAssignor,
+      isolationLevel = get[IsolationLevel]("isolation-level", "isolation.level") getOrElse default.isolationLevel,
+      saslSupport    = SaslSupportConfig(config, default.saslSupport),
+      sslSupport     = SslSupportConfig(config),
+      clientRack     = get[String]("client-rack", "client.rack") orElse default.clientRack,
+      groupProtocol  = (get[GroupProtocol]("group-protocol", "group.protocol") getOrElse default.groupProtocol) match {
+        case GroupProtocol.Classic                  => GroupProtocol.Classic
+        case GroupProtocol.Consumer(remoteAssignor) =>
+          GroupProtocol.Consumer(get[String]("group-remote-assignor", "group.remote.assignor") orElse remoteAssignor)
+      },
     )
   }
 
